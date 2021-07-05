@@ -1,20 +1,24 @@
+# Azure app service infrastructure-as-code with Terraform and ADO yaml pipeline
+
+
 ![Screenshot 2021-06-02 at 12 03 54](https://user-images.githubusercontent.com/9538697/124413440-c1290c80-dda4-11eb-8202-0fcf110baa57.png)
+
+
 ---
 languages:
 - nodejs
 - javascript
-- terraform
+
 products:
 - azure
 - azure devops yaml pipelines
 - azure-app-service
 - terraform
-description: "Azure app service infrastructure-as-code with Terraform and ADO yaml pipeline"
 ---
 
 # Description
 
-"This sample demonstrates Azure infrastructure-as-code with Terraform and ADO yaml pipeline. Creates dev and prod environments, builds and tests a tiny Hello World Node.js app and deploys app to Azure App Service. Consequently provides pipelines to destroy dev and prod environments"
+This sample demonstrates Azure infrastructure-as-code with Terraform and ADO yaml pipeline. Creates dev and prod environments, builds and tests a tiny Hello World Node.js app and deploys app to Azure App Service. Consequently provides pipelines to destroy dev and prod environments
 
 ## Requirements 
 - Azure Cloud
