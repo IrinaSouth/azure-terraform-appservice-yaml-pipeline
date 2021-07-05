@@ -1,0 +1,233 @@
+variables:
+
+  # Azure Service Principal alias name
+  azureSubscription: 'nodejs-cicd'
+
+  # Web app name
+  webAppNameDev: 'nodejs-cicd-terra-app-dev'
+  webAppNameProd: 'nodejs-cicd-terra-app-prod'
+
+  # Environment name
+  environmentName: 'dev'
+
+  prodEnvironmentName: 'production'
+
+  # Agent VM image name
+  vmImageName: 'ubuntu-latest'
+
+stages :
+  - stage: build
+    displayName: Build and unit test Node app
+    jobs:
+    - job: Build
+      displayName: Build Node app
+      pool:
+        vmImage: $(vmImageName)
+
+      steps:
+      - task: NodeTool@0
+        inputs:
+          versionSpec: '12.x'
+        displayName: 'Install Node.js'
+
+      - script: |
+          npm install
+          npm run build --if-present
+          npm run test --if-present
+        displayName: 'npm install, build and test'
+
+      - task: PublishTestResults@2
+        condition: succeededOrFailed()
+        inputs:
+          testRunner: JUnit
+          testResultsFiles: '**/test-results.xml'
+        displayName: 'publish test results'    
+
+      - task: ArchiveFiles@2
+        displayName: 'Archive files'
+        inputs:
+          rootFolderOrFile: '$(System.DefaultWorkingDirectory)'
+          includeRootFolder: false
+          archiveType: zip
+          archiveFile: $(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip
+          replaceExistingArchive: true
+
+      - upload: $(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip
+        artifact: drop
+  - stage: validate
+    displayName: Validate Terraform  
+    jobs:
+    - job: validate_infra
+      displayName: Validate infra
+      continueOnError: false
+      steps:
+      - task: TerraformInstaller@0
+        displayName: 'install'
+        inputs:
+          terraformVersion: latest
+      - task: TerraformCLI@0
+        displayName: 'init'
+        inputs:
+          backendType: azurerm
+          command: init
+          backendServiceArm: $(azureSubscription)
+          backendAzureRmResourceGroupName: 'nodejs-cicd-rg'
+          backendAzureRmStorageAccountName: 'tfops'
+          backendAzureRmContainerName: 'tfstate'
+          backendAzureRmKey: tfstate.tfstate
+      - task: TerraformCLI@0
+        displayName: 'validate'
+        inputs:
+          backendType: 'azurerm'
+          command: 'validate'    
+  - stage: provision_infra_dev
+    displayName: Provision Dev resources in Azure via Terraform
+    jobs:
+    - deployment: provision_infra
+      displayName: Provision infra
+      environment: $(environmentName)
+      strategy:
+       runOnce:
+         deploy:
+            steps:
+              - checkout: self
+              - task: TerraformInstaller@0
+                displayName: 'install'
+                inputs:
+                  terraformVersion: latest
+              - task: TerraformCLI@0
+                displayName: 'init'
+                inputs:
+                  backendType: azurerm
+                  command: init
+                  backendServiceArm: $(azureSubscription)
+                  backendAzureRmResourceGroupName: 'nodejs-cicd-rg'
+                  backendAzureRmStorageAccountName: 'tfops'
+                  backendAzureRmContainerName: 'tfstate'
+                  backendAzureRmKey: tfstate.tfstate
+              # - task: TerraformCLI@0
+              #   displayName: create workspace dev
+              #   continueOnError: 'true'
+              #   inputs:
+              #     command: workspace        
+              #     workspaceSubCommand: new
+              #     workspaceName: dev 
+              - task: TerraformCLI@0
+                displayName: select workspace dev
+                inputs:
+                  command: workspace        
+                  workspaceSubCommand: select
+                  workspaceName: dev      
+              - task: TerraformCLI@0
+                displayName: 'plan'
+                inputs:
+                  backendType: 'azurerm'
+                  command: 'plan'
+                  commandOptions: '-out=plan-dev -var-file=dev.tfvars'
+                  environmentServiceName: $(azureSubscription)
+                  publishPlanResults: 'terraform_plan'
+              - task: TerraformCLI@0
+                displayName: 'apply'
+                inputs:
+                  backendType: 'azurerm'
+                  command: 'apply'
+                  commandOptions: 'plan-dev'
+                  environmentServiceName: $(azureSubscription)
+  - stage: deploy_dev
+    displayName: Deploy Node app to Dev
+    condition: succeeded()
+    jobs:
+    - deployment: Deploy
+      displayName: Deploy Node app
+      environment: $(environmentName)
+      pool:
+        vmImage: $(vmImageName)
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+            - task: AzureWebApp@1
+              displayName: 'Azure Web App Deploy: nodejs-cicd-terra-app-dev'
+              inputs:
+                azureSubscription: $(azureSubscription)
+                appType: webAppLinux
+                appName: $(webAppNameDev)
+                # runtimeStack: 'node|12-lts'
+                package: $(Pipeline.Workspace)/drop/$(Build.BuildId).zip
+                startUpCommand: 'npm run start'
+  - stage: provision_infra_prod
+    displayName: Provision Prod resources in Azure via Terraform
+    jobs:
+    - deployment: provision_infra
+      displayName: Provision prod infra
+      continueOnError: false
+      environment: $(prodEnvironmentName)
+      strategy:
+       runOnce:
+         deploy:
+            steps:
+              - checkout: self
+              - task: TerraformInstaller@0
+                displayName: 'install'
+                inputs:
+                  terraformVersion: latest
+              - task: TerraformCLI@0
+                displayName: 'init'
+                inputs:
+                  backendType: azurerm
+                  command: init
+                  backendServiceArm: $(azureSubscription)
+                  backendAzureRmResourceGroupName: 'nodejs-cicd-rg'
+                  backendAzureRmStorageAccountName: 'tfops'
+                  backendAzureRmContainerName: 'tfstate'
+                  backendAzureRmKey: tfstate.tfstate
+              # - task: TerraformCLI@0
+              #   displayName: create workspace prod
+              #   continueOnError: 'true'
+              #   inputs:
+              #     command: workspace        
+              #     workspaceSubCommand: new
+              #     workspaceName: prod                 
+              - task: TerraformCLI@0
+                displayName: select workspace prod
+                inputs:
+                  command: workspace        
+                  workspaceSubCommand: select
+                  workspaceName: prod              
+              - task: TerraformCLI@0
+                displayName: 'plan'
+                inputs:
+                  backendType: 'azurerm'
+                  command: 'plan'
+                  commandOptions: '-out=plan-prod -var-file=prod.tfvars' 
+                  environmentServiceName: $(azureSubscription)
+                  publishPlanResults: 'terraform_plan'
+              - task: TerraformCLI@0
+                displayName: 'apply'
+                inputs:
+                  backendType: 'azurerm'
+                  command: 'apply'
+                  commandOptions: 'plan-prod'
+                  environmentServiceName: $(azureSubscription)
+
+  - stage: deploy_prod
+    displayName: Deploy Node app to Prod
+    jobs:
+    - deployment: Deploy
+      displayName: Deploy Node app
+      environment: $(prodEnvironmentName)
+      pool:
+        vmImage: $(vmImageName)
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+            - task: AzureWebApp@1
+              displayName: 'Azure Web App Deploy: nodejs-cicd-terra-app'
+              inputs:
+                azureSubscription: $(azureSubscription)
+                appType: webAppLinux
+                appName: $(webAppNameProd)
+                # runtimeStack: 'node|12-lts'
+                package: $(Pipeline.Workspace)/drop/$(Build.BuildId).zip
+                startUpCommand: 'npm run start'              

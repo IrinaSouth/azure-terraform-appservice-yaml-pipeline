@@ -1,0 +1,5 @@
+resource_group_name = "nodejs-app-production-rg"
+app_service_plan_name = "nodejs-app-production-sp"
+app_service_name = "nodejs-cicd-terra-app-prod"
+storage_account_name = "appdatatfdemoprod"
+location = "australiaeast"

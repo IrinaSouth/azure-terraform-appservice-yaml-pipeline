@@ -1,0 +1,37 @@
+variables:
+
+  # Azure Service Principal alias name
+  azureSubscription: 'nodejs-cicd'
+
+stages:
+  - stage: destroy
+    jobs:
+    - job: destroy
+      continueOnError: false
+      steps:
+      - task: TerraformInstaller@0
+        displayName: 'install'
+        inputs:
+          terraformVersion: latest
+      - task: TerraformCLI@0
+        displayName: 'init'
+        inputs:
+          backendType: azurerm
+          command: init
+          backendServiceArm: $(azureSubscription)
+          backendAzureRmResourceGroupName: 'nodejs-cicd-rg'
+          backendAzureRmStorageAccountName: 'tfops'
+          backendAzureRmContainerName: 'tfstate'
+          backendAzureRmKey: tfstate.tfstate
+      - task: TerraformCLI@0
+        displayName: select workspace dev
+        inputs:
+          command: workspace        
+          workspaceSubCommand: select
+          workspaceName: dev     
+      - task: TerraformCLI@0
+        displayName: 'destroy'
+        inputs:
+          backendType: azurerm
+          command: 'destroy'
+          environmentServiceName: $(azureSubscription)    
